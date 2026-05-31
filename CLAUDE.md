@@ -5,7 +5,8 @@ Directline Studio エコシステムの一員（Theory Lab / Song Master / Theor
 
 - タイトル: **Chord Analysis Lab**
 - サブタイトル: 名曲のコード進行を分析して、理論力を鍛える
-- 本番URL: （Vercel デプロイ後に追記）
+- 本番URL: https://chord-analysis-lab.vercel.app
+- GitHub: https://github.com/hikikatari-lgtm/chord-analysis-lab
 
 ## 技術スタック
 
