@@ -10,7 +10,7 @@ import {
   type Level,
   type Mode,
 } from "@/data/songs";
-import { playProgression, stopAudio } from "@/lib/audio";
+import { ensureAudio, playProgression, preloadAudio, stopAudio } from "@/lib/audio";
 import { setProgress } from "../../progress";
 
 const MODE_LABEL: Record<Mode, { title: string; emoji: string }> = {
@@ -167,9 +167,22 @@ function PlayControls({
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState<number | null>(null);
 
+  // タップ前に Tone モジュール＋シンセを先読みしておく（iOS のジェスチャー対策）
+  useEffect(() => {
+    void preloadAudio();
+  }, []);
+
   async function play() {
     if (playing) {
       await stopAudio();
+      setPlaying(false);
+      setStep(null);
+      return;
+    }
+    // iOS: タップのハンドラ内で「最初に」AudioContext を起動/再開する。
+    // 動的 import は preloadAudio で済ませてあるのでここでは即時に走る。
+    const ready = await ensureAudio();
+    if (!ready) {
       setPlaying(false);
       setStep(null);
       return;
