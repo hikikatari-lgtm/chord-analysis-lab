@@ -158,25 +158,40 @@ function PlayControls({
   chords,
   bpm,
   hidden = false,
+  onStepChange,
 }: {
   chords: string[];
   bpm: number;
   hidden?: boolean;
+  /** 再生中のコード index（停止時は null）を親に通知 */
+  onStepChange?: (step: number | null) => void;
 }) {
   const [tempo, setTempo] = useState(bpm);
   const [playing, setPlaying] = useState(false);
   const [step, setStep] = useState<number | null>(null);
 
-  // タップ前に Tone モジュール＋シンセを先読みしておく（iOS のジェスチャー対策）
+  function emitStep(s: number | null) {
+    setStep(s);
+    onStepChange?.(s);
+  }
+
+  // タップ前に Tone モジュール＋楽器を先読みしておく（iOS のジェスチャー対策）
   useEffect(() => {
     void preloadAudio();
+  }, []);
+
+  // アンマウント時は必ず停止
+  useEffect(() => {
+    return () => {
+      void stopAudio();
+    };
   }, []);
 
   async function play() {
     if (playing) {
       await stopAudio();
       setPlaying(false);
-      setStep(null);
+      emitStep(null);
       return;
     }
     // iOS: タップのハンドラ内で「最初に」AudioContext を起動/再開する。
@@ -184,16 +199,18 @@ function PlayControls({
     const ready = await ensureAudio();
     if (!ready) {
       setPlaying(false);
-      setStep(null);
+      emitStep(null);
       return;
     }
     setPlaying(true);
-    setStep(0);
-    const totalMs = await playProgression(chords, tempo, (i) => setStep(i));
-    window.setTimeout(() => {
-      setPlaying(false);
-      setStep(null);
-    }, totalMs + 200);
+    emitStep(0);
+    await playProgression(chords, tempo, {
+      onStep: (i) => emitStep(i),
+      onEnd: () => {
+        setPlaying(false);
+        emitStep(null);
+      },
+    });
   }
 
   return (
@@ -207,8 +224,8 @@ function PlayControls({
             : "bg-gold text-ink hover:bg-gold-light"
         }`}
       >
-        <span className="text-base">{playing ? "⏸" : "▶"}</span>
-        {playing ? "再生中… (停止)" : "🔊 コード進行を再生"}
+        <span className="text-base">{playing ? "■" : "▶"}</span>
+        {playing ? "停止" : "🔊 バンドで再生"}
       </button>
 
       <div className="flex w-full max-w-xs items-center gap-3">
@@ -226,13 +243,13 @@ function PlayControls({
         />
       </div>
 
-      {/* 再生位置インジケータ（ear モードでは hidden） */}
-      {!hidden && step !== null && (
+      {/* 再生位置インジケータ（ear モードはコードを伏せているのでこちらで表示） */}
+      {hidden && step !== null && (
         <div className="flex gap-1.5">
           {chords.map((_, i) => (
             <span
               key={i}
-              className={`h-1.5 w-1.5 rounded-full ${
+              className={`h-2 w-2 rounded-full transition-colors ${
                 i === step ? "bg-gold" : "bg-ink-border"
               }`}
             />
@@ -255,29 +272,44 @@ function VisualQuestion({
   onChoose: (i: number) => void;
 }) {
   const answered = selected !== null;
+  // 再生中のコード（小節）をハイライトするための index
+  const [playStep, setPlayStep] = useState<number | null>(null);
   return (
     <>
       <SongHeader q={q} />
 
-      {/* コード進行カード */}
+      {/* コード進行カード（再生中は現在のコードが光る） */}
       <div className="mb-6 flex flex-wrap justify-center gap-2.5">
-        {q.chords.map((c, i) => (
-          <div
-            key={i}
-            className="flex min-w-[64px] flex-col items-center rounded-xl border border-ink-border bg-ink-card px-3 py-3"
-          >
-            <span className="text-lg font-semibold text-neutral-100">{c}</span>
-            {answered && (
-              <span className="mt-1 text-[11px] font-medium text-gold">
-                {q.romanNumerals[i]}
+        {q.chords.map((c, i) => {
+          const active = playStep === i;
+          return (
+            <div
+              key={i}
+              className={`flex min-w-[64px] flex-col items-center rounded-xl border px-3 py-3 transition-colors ${
+                active
+                  ? "animate-pulse-gold border-gold bg-gold/15"
+                  : "border-ink-border bg-ink-card"
+              }`}
+            >
+              <span
+                className={`text-lg font-semibold ${
+                  active ? "text-gold-light" : "text-neutral-100"
+                }`}
+              >
+                {c}
               </span>
-            )}
-          </div>
-        ))}
+              {answered && (
+                <span className="mt-1 text-[11px] font-medium text-gold">
+                  {q.romanNumerals[i]}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className="mb-7">
-        <PlayControls chords={q.chords} bpm={q.bpm} />
+        <PlayControls chords={q.chords} bpm={q.bpm} onStepChange={setPlayStep} />
       </div>
 
       <p className="mb-4 text-center text-sm text-neutral-300">

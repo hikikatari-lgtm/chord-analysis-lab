@@ -123,13 +123,13 @@ export function parseChord(chord: string): ParsedChord {
   return { rootPc, bassPc, intervals };
 }
 
-function midiToName(midi: number): string {
+export function midiToName(midi: number): string {
   const pc = ((midi % 12) + 12) % 12;
   const octave = Math.floor(midi / 12) - 1; // MIDI 60 = C4
   return `${PC_NAME[pc]}${octave}`;
 }
 
-function pcToMidi(pc: number, octave: number): number {
+export function pcToMidi(pc: number, octave: number): number {
   return (octave + 1) * 12 + pc;
 }
 
@@ -149,4 +149,50 @@ export function chordToNotes(chord: string, baseOctave = 3): string[] {
     notes.push(midiToName(rootMidi + iv));
   }
   return notes;
+}
+
+/**
+ * コードパッド用の音名配列。低音ベースは省き、中音域（オクターブ3〜）のコードトーンのみ。
+ * ベースラインと低域がぶつからないようにするため。
+ */
+export function chordToPadNotes(chord: string, baseOctave = 3): string[] {
+  const { rootPc, intervals } = parseChord(chord);
+  const rootMidi = pcToMidi(rootPc, baseOctave);
+  return intervals.map((iv) => midiToName(rootMidi + iv));
+}
+
+/**
+ * ベースライン1小節分（8分音符×8）の音名配列。
+ * ルート→オクターブ上→ルート→5th… を行き来する丸いベースパターン。
+ */
+export function bassPattern(chord: string): string[] {
+  const { bassPc, rootPc, intervals } = parseChord(chord);
+  // スラッシュコードはベース音（分母）を、それ以外はルートを土台にする
+  const lowPc = bassPc;
+  const fifthIv = intervals[2] ?? 7; // [0, 3rd, 5th, ...] の5th。dim=6 / aug=8 にも対応
+  const lowMidi = pcToMidi(lowPc, 2); // C2〜B2 あたり
+  const octUp = lowMidi + 12;
+  const fifth = pcToMidi(rootPc, 2) + fifthIv;
+  const R = midiToName(lowMidi);
+  const O = midiToName(octUp);
+  const F = midiToName(fifth);
+  // 8分音符8つ: R O R F R O F O
+  return [R, O, R, F, R, O, F, O];
+}
+
+/**
+ * アルペジオ/コンピング1小節分（8分音符×8）の音名配列。
+ * コードトーンを中高音域（オクターブ4）で上昇→下降。
+ */
+export function arpPattern(chord: string): string[] {
+  const { rootPc, intervals } = parseChord(chord);
+  const rootMidi = pcToMidi(rootPc, 4);
+  const tones = intervals.map((iv) => rootMidi + iv);
+  // 上昇 → 端を除いた下降（例 3音: 0 1 2 1 / 4音: 0 1 2 3 2 1）
+  const seq = [...tones];
+  for (let i = tones.length - 2; i >= 1; i--) seq.push(tones[i]);
+  // 8分音符8つになるようループ
+  const out: string[] = [];
+  for (let i = 0; i < 8; i++) out.push(midiToName(seq[i % seq.length]));
+  return out;
 }
